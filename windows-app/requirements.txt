@@ -1,0 +1,5 @@
+customtkinter==5.2.2
+httpx==0.28.1
+winotify==1.1.0
+pystray==0.19.5
+pillow==11.2.1

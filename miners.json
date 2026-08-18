@@ -1,0 +1,35 @@
+[
+  {
+    "id": "asic1",
+    "name": "S19k Pro #1",
+    "firmware": "antminer",
+    "port": 45201,
+    "expected_ths": 120,
+    "auto_reboot": true
+  },
+  {
+    "id": "asic2",
+    "name": "S19k Pro #2",
+    "firmware": "antminer",
+    "port": 45202,
+    "expected_ths": 120,
+    "auto_reboot": true
+  },
+  {
+    "id": "vnish1",
+    "name": "Vnish #1",
+    "firmware": "vnish",
+    "port": 45004,
+    "expected_ths": 85,
+    "auto_reboot": true
+  },
+  {
+    "id": "asic3",
+    "name": "S19 #3",
+    "firmware": "antminer",
+    "port": 45001,
+    "expected_ths": 90,
+    "auto_reboot": true
+  }
+]
+

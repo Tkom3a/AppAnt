@@ -1,0 +1,17 @@
+.env
+data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+ios-app/.env
+windows-app/.venv/
+windows-app/dist/
+windows-app/build/
+windows-app/*.spec

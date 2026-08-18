@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0b0d10" />
+  <title>УВЫ control</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" href="/assets/uvy-logo.png" />
+  <link rel="apple-touch-icon" href="/assets/uvy-logo.png" />
+  <link rel="manifest" href="/assets/manifest.json" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <div class="brand">
+        <img class="brand-logo" src="/assets/uvy-logo.png" alt="УВЫ" />
+        <div>
+          <p class="eyebrow">Локация</p>
+          <h1 id="title">УВЫ control</h1>
+        </div>
+      </div>
+      <button id="refreshBtn" class="icon-btn" type="button">Обновить</button>
+    </header>
+
+    <section id="login" class="panel hidden">
+      <img class="login-logo" src="/assets/uvy-logo.png" alt="УВЫ control" />
+      <h2>Вход в ядро</h2>
+      <p class="hint">Адрес ядра и токен из файла <code>.env</code> на сервере.</p>
+      <label>URL ядра
+        <input id="coreUrl" type="url" placeholder="http://95.165.139.60:8486" autocomplete="off" />
+      </label>
+      <label>API токен
+        <input id="apiToken" type="password" placeholder="API_TOKEN" autocomplete="off" />
+      </label>
+      <button id="saveLogin" type="button">Сохранить и открыть</button>
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="stats">
+        <article>
+          <span>Всего TH/s</span>
+          <strong id="totalHs">—</strong>
+        </article>
+        <article>
+          <span>Авторебут</span>
+          <strong id="autoState">—</strong>
+        </article>
+      </div>
+      <label class="switch-row">
+        <span>Автоперезагрузка при падении</span>
+        <input id="autoToggle" type="checkbox" />
+      </label>
+      <div id="miners" class="list"></div>
+      <h2 class="section-title">События</h2>
+      <div id="events" class="events"></div>
+      <button id="logoutBtn" class="ghost" type="button">Сменить сервер</button>
+    </section>
+  </div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -83,3 +83,10 @@ class StateStore:
             self.state.reboot_times[miner_id] = kept
             self.save()
             return len(kept)
+
+    def set_sleep_applied(self, miner_id: str, sleeping: bool) -> None:
+        with self._lock:
+            applied = dict(self.state.sleep_applied)
+            applied[miner_id] = sleeping
+            self.state.sleep_applied = applied
+            self.save()

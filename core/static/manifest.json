@@ -3,12 +3,18 @@
   "short_name": "УВЫ",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#07080c",
+  "theme_color": "#07080c",
   "icons": [
     {
-      "src": "/assets/uvy-logo.png",
-      "sizes": "1024x1024",
+      "src": "/assets/asic-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png"
     }
   ]

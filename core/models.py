@@ -13,6 +13,7 @@ MinerStatus = Literal[
     "down",
     "rebooting",
     "cooldown",
+    "sleeping",
 ]
 
 
@@ -55,12 +56,30 @@ class EventItem(BaseModel):
     message: str
 
 
+class PoolSlot(BaseModel):
+    url: str = ""
+    user: str = ""
+    password: str = ""
+
+
+class PoolPreset(BaseModel):
+    id: str
+    name: str
+    pools: list[PoolSlot] = Field(default_factory=list)
+
+
 class AppState(BaseModel):
     auto_reboot_enabled: bool = True
     expo_tokens: list[str] = Field(default_factory=list)
     snapshots: dict[str, MinerSnapshot] = Field(default_factory=dict)
     events: list[EventItem] = Field(default_factory=list)
     reboot_times: dict[str, list[str]] = Field(default_factory=dict)
+    sleep_enabled: bool = False
+    sleep_start: str = "23:00"
+    sleep_end: str = "07:00"
+    sleep_timezone: str = "Europe/Moscow"
+    sleep_applied: dict[str, bool] = Field(default_factory=dict)
+    pool_presets: list[PoolPreset] = Field(default_factory=list)
 
 
 class RebootRequest(BaseModel):
@@ -74,3 +93,22 @@ class DeviceRegister(BaseModel):
 
 class SettingsPatch(BaseModel):
     auto_reboot_enabled: Optional[bool] = None
+    sleep_enabled: Optional[bool] = None
+    sleep_start: Optional[str] = None
+    sleep_end: Optional[str] = None
+
+
+class SleepCommand(BaseModel):
+    sleep: bool
+    miner_ids: list[str] = Field(default_factory=list)
+
+
+class PoolsCommand(BaseModel):
+    pools: list[PoolSlot]
+    miner_ids: list[str] = Field(default_factory=list)
+    keep_worker: bool = False
+
+
+class PresetCreate(BaseModel):
+    name: str
+    pools: list[PoolSlot]

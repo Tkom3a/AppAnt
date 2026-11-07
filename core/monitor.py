@@ -29,6 +29,32 @@ def parse_iso(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def in_sleep_window(start: str, end: str, tz_name: str, now: Optional[datetime] = None) -> bool:
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(tz_name or "Europe/Moscow")
+    except Exception:
+        zone = ZoneInfo("Europe/Moscow")
+    local = (now or utcnow()).astimezone(zone)
+
+    def minutes(value: str) -> int:
+        hour, minute = value.split(":", 1)
+        return int(hour) * 60 + int(minute)
+
+    try:
+        start_m = minutes(start)
+        end_m = minutes(end)
+    except (ValueError, AttributeError):
+        return False
+    current = local.hour * 60 + local.minute
+    if start_m == end_m:
+        return False
+    if start_m < end_m:
+        return start_m <= current < end_m
+    return current >= start_m or current < end_m
+
+
 def load_miners(settings: Settings) -> list[MinerConfig]:
     path = settings.miners_path()
     if not path.exists():
@@ -88,6 +114,7 @@ class Monitor:
             *[self.poll_one(miner) for miner in self.miners],
             return_exceptions=False,
         )
+        await self.apply_sleep_schedule()
         return list(results)
 
     async def poll_one(self, miner: MinerConfig) -> MinerSnapshot:
@@ -101,6 +128,9 @@ class Monitor:
         )
         previous = self.store.get_snapshot(miner.id)
         snapshot = self._build_snapshot(miner, reading, previous)
+        if self.intentionally_sleeping(miner.id) or self.schedule_wants_sleep():
+            snapshot.status = "sleeping"
+            snapshot.last_error = None
         await self._react(miner, snapshot, previous)
         self.store.put_snapshot(snapshot)
         return snapshot
@@ -181,6 +211,8 @@ class Monitor:
             await self.reboot(miner, reason="auto: low/absent hashrate", automatic=True)
 
     def _should_auto_reboot(self, miner: MinerConfig, snapshot: MinerSnapshot) -> bool:
+        if snapshot.status == "sleeping" or self.intentionally_sleeping(miner.id) or self.schedule_wants_sleep():
+            return False
         if not self.store.state.auto_reboot_enabled:
             return False
         if not miner.auto_reboot:
@@ -270,6 +302,89 @@ class Monitor:
                 f"{miner.name}: не удалось перезагрузить — {detail}",
             )
         return snapshot
+
+    def intentionally_sleeping(self, miner_id: str) -> bool:
+        return bool(self.store.state.sleep_applied.get(miner_id))
+
+    def schedule_wants_sleep(self) -> bool:
+        state = self.store.state
+        if not state.sleep_enabled:
+            return False
+        return in_sleep_window(state.sleep_start, state.sleep_end, state.sleep_timezone)
+
+    def miners_by_ids(self, miner_ids: list[str]) -> list[MinerConfig]:
+        if not miner_ids:
+            return list(self.miners)
+        return [self.miner_by_id(item) for item in miner_ids]
+
+    async def apply_sleep_schedule(self) -> None:
+        state = self.store.state
+        if not state.sleep_enabled:
+            return
+        should_sleep = in_sleep_window(state.sleep_start, state.sleep_end, state.sleep_timezone)
+        for miner in self.miners:
+            if state.sleep_applied.get(miner.id) is should_sleep:
+                continue
+            await self.set_sleep_one(miner, should_sleep, "расписание")
+            state = self.store.state
+
+    async def set_sleep_one(self, miner: MinerConfig, sleep: bool, reason: str) -> dict:
+        user, password = credentials_for(miner.id, miner.firmware, self.settings)
+        view = await self.client.set_sleep(miner.firmware, miner.port, user, password, sleep)
+        if view.ok:
+            self.store.set_sleep_applied(miner.id, sleep)
+            snapshot = self.store.get_snapshot(miner.id)
+            if snapshot:
+                snapshot.status = "sleeping" if sleep else "unknown"
+                snapshot.last_error = None
+                self.store.put_snapshot(snapshot)
+            verb = "сон" if sleep else "пробуждение"
+            await self._emit("info", miner.id, f"{miner.name}: {verb} ({reason})")
+        else:
+            verb = "усыпить" if sleep else "разбудить"
+            await self._emit("warn", miner.id, f"{miner.name}: не удалось {verb} — {view.detail}")
+        return {"id": miner.id, "name": miner.name, "ok": view.ok, "detail": view.detail}
+
+    async def read_pools(self, miner: MinerConfig) -> dict:
+        user, password = credentials_for(miner.id, miner.firmware, self.settings)
+        view = await self.client.read_control(miner.firmware, miner.port, user, password)
+        return {
+            "id": miner.id,
+            "name": miner.name,
+            "firmware": miner.firmware,
+            "ok": view.ok,
+            "detail": view.detail,
+            "sleeping": view.sleeping,
+            "pools": view.pools or [],
+        }
+
+    async def write_pools(
+        self,
+        miner: MinerConfig,
+        pools: list[dict],
+        keep_worker: bool,
+    ) -> dict:
+        user, password = credentials_for(miner.id, miner.firmware, self.settings)
+        slots = [dict(item) for item in pools]
+        if keep_worker:
+            current = await self.client.read_control(miner.firmware, miner.port, user, password)
+            if not current.ok or not current.pools:
+                return {
+                    "id": miner.id,
+                    "name": miner.name,
+                    "ok": False,
+                    "detail": current.detail or "не удалось прочитать текущие воркеры",
+                }
+            for index, slot in enumerate(slots):
+                existing = current.pools[index]["user"] if index < len(current.pools) else ""
+                if existing:
+                    slot["user"] = existing
+        view = await self.client.set_pools(miner.firmware, miner.port, user, password, slots)
+        if view.ok:
+            await self._emit("info", miner.id, f"{miner.name}: пулы обновлены")
+        else:
+            await self._emit("warn", miner.id, f"{miner.name}: не удалось сменить пул — {view.detail}")
+        return {"id": miner.id, "name": miner.name, "ok": view.ok, "detail": view.detail}
 
     async def _emit(self, level: str, miner_id: Optional[str], message: str) -> None:
         title = "УВЫ control"

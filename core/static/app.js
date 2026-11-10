@@ -151,6 +151,7 @@ async function loadAll() {
   renderSleep(settings, miners);
   renderPoolChoices(miners);
   renderPresets(settings.pool_presets || []);
+  await loadPoolFile();
 }
 
 document.querySelectorAll(".tab").forEach((btn) => {
@@ -253,12 +254,159 @@ function renderSleep(settings, minersPayload) {
   }).join("") || `<div class="empty">Асиков в списке нет</div>`;
 }
 
+let poolTargetAll = true;
+const poolTargetIds = new Set();
+
+function renderPoolFile(payload) {
+  const list = document.getElementById("poolFileList");
+  const workers = document.getElementById("poolWorkerList");
+  if (!payload.ok) {
+    list.innerHTML = `<div class="empty">${payload.detail || "Файл пулов не прочитан"}</div>`;
+    if (workers) workers.innerHTML = "";
+    renderPoolTargets([]);
+    return;
+  }
+  list.innerHTML = (payload.pools || []).map((pool, index) => `
+    <article class="pool-card-drag" draggable="true" data-pool-index="${index}">
+      <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+      <div>
+        <div class="name">${index + 1}. ${pool.name}</div>
+        <div class="sub">${pool.url}<br />кошелёк ${pool.user}</div>
+      </div>
+      <div class="pool-move">
+        <button type="button" data-move="-1" data-pool-index="${index}" aria-label="Выше">↑</button>
+        <button type="button" data-move="1" data-pool-index="${index}" aria-label="Ниже">↓</button>
+      </div>
+    </article>
+  `).join("") || `<div class="empty">В pools.json нет пулов</div>`;
+  if (workers) {
+    workers.innerHTML = (payload.miners || []).map((miner) => `
+      <article>
+        <div class="row">
+          <div class="name">${miner.name}</div>
+          <span class="badge">${miner.worker_user || "без номера"}</span>
+        </div>
+      </article>
+    `).join("");
+  }
+  renderPoolTargets(payload.miners || []);
+  bindPoolDrag(list);
+}
+
+function renderPoolTargets(miners) {
+  const box = document.getElementById("poolTargets");
+  if (!box) return;
+  const ids = miners.map((miner) => miner.id);
+  if (poolTargetAll) ids.forEach((id) => poolTargetIds.add(id));
+  [...poolTargetIds].forEach((id) => {
+    if (!ids.includes(id)) poolTargetIds.delete(id);
+  });
+  const allChecked = ids.length > 0 && ids.every((id) => poolTargetIds.has(id));
+  if (ids.length) poolTargetAll = allChecked;
+  box.innerHTML = miners.length ? `
+    <label class="check-line">
+      <input id="poolTargetAll" type="checkbox" ${allChecked ? "checked" : ""} />
+      Все
+    </label>
+    ${miners.map((miner) => `
+      <label class="check-line">
+        <input type="checkbox" data-target="${miner.id}" ${poolTargetIds.has(miner.id) ? "checked" : ""} />
+        ${miner.name}
+      </label>
+    `).join("")}
+  ` : "";
+}
+
+function selectedPoolTargets() {
+  const boxes = [...document.querySelectorAll("#poolTargets [data-target]")];
+  const checked = boxes.filter((item) => item.checked).map((item) => item.dataset.target);
+  const all = boxes.length > 0 && checked.length === boxes.length;
+  return { all, ids: checked };
+}
+
+function currentPoolOrder() {
+  return [...document.querySelectorAll("#poolFileList [data-pool-index]")]
+    .filter((card) => card.matches("article"))
+    .map((card) => Number(card.dataset.poolIndex));
+}
+
+async function savePoolOrder(order) {
+  const message = document.getElementById("poolFileMsg");
+  setMessage(message, "Сохраняю порядок...", null);
+  try {
+    const payload = await api("/api/pools/order", {
+      method: "PUT",
+      body: JSON.stringify({ order }),
+    });
+    renderPoolFile(payload);
+    setMessage(message, "Порядок сохранён. Запишите его на асики кнопкой ниже.", true);
+  } catch (error) {
+    setMessage(message, error.message, false);
+    await loadPoolFile();
+  }
+}
+
+function bindPoolDrag(list) {
+  let fromIndex = null;
+  list.querySelectorAll(".pool-card-drag").forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      fromIndex = Number(card.dataset.poolIndex);
+      card.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(fromIndex));
+    });
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      list.querySelectorAll(".over").forEach((item) => item.classList.remove("over"));
+    });
+    card.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      card.classList.add("over");
+    });
+    card.addEventListener("dragleave", () => card.classList.remove("over"));
+    card.addEventListener("drop", (event) => {
+      event.preventDefault();
+      card.classList.remove("over");
+      const from = Number(event.dataTransfer.getData("text/plain"));
+      const to = Number(card.dataset.poolIndex);
+      if (Number.isNaN(from) || from === to) return;
+      const order = currentPoolOrder();
+      order.splice(order.indexOf(from), 1);
+      order.splice(order.indexOf(to), 0, from);
+      savePoolOrder(order);
+    });
+  });
+  list.querySelectorAll("button[data-move]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const index = Number(button.dataset.poolIndex);
+      const direction = Number(button.dataset.move);
+      const order = currentPoolOrder();
+      const next = index + direction;
+      if (next < 0 || next >= order.length) return;
+      [order[index], order[next]] = [order[next], order[index]];
+      savePoolOrder(order);
+    });
+    button.addEventListener("mousedown", (event) => event.stopPropagation());
+    button.addEventListener("dragstart", (event) => event.preventDefault());
+  });
+}
+
+async function loadPoolFile() {
+  try {
+    renderPoolFile(await api("/api/pools/config"));
+  } catch (error) {
+    renderPoolFile({ ok: false, detail: error.message, pools: [], miners: [] });
+  }
+}
+
 function renderPoolChoices(minersPayload) {
   const select = document.getElementById("poolMiner");
   const current = select.value;
   const miners = minersPayload.miners || [];
-  select.innerHTML = miners.map((miner) => `<option value="${miner.id}">${miner.name}</option>`).join("");
-  if (current && miners.some((miner) => miner.id === current)) select.value = current;
+  select.innerHTML = `<option value="*">Все асики</option>${miners.map((miner) => `<option value="${miner.id}">${miner.name}</option>`).join("")}`;
+  if (current === "*" || miners.some((miner) => miner.id === current)) select.value = current;
+  else select.value = "*";
 }
 
 function poolValues() {
@@ -355,10 +503,60 @@ document.getElementById("sleepMiners").addEventListener("click", (event) => {
   commandSleep(sleep, [button.dataset.id]);
 });
 
+document.getElementById("poolTargets").addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  if (input.id === "poolTargetAll") {
+    poolTargetAll = input.checked;
+    document.querySelectorAll("#poolTargets [data-target]").forEach((item) => {
+      item.checked = input.checked;
+      if (input.checked) poolTargetIds.add(item.dataset.target);
+      else poolTargetIds.delete(item.dataset.target);
+    });
+    return;
+  }
+  const id = input.dataset.target;
+  if (!id) return;
+  if (input.checked) poolTargetIds.add(id);
+  else poolTargetIds.delete(id);
+  const boxes = [...document.querySelectorAll("#poolTargets [data-target]")];
+  poolTargetAll = boxes.length > 0 && boxes.every((item) => item.checked);
+  const master = document.getElementById("poolTargetAll");
+  if (master) master.checked = poolTargetAll;
+});
+
+document.getElementById("applyPoolFile").onclick = async () => {
+  const message = document.getElementById("poolFileMsg");
+  const selected = selectedPoolTargets();
+  if (!selected.ids.length) {
+    setMessage(message, "Отметьте асики или «Все»", false);
+    return;
+  }
+  const question = selected.all
+    ? "Записать этот порядок пулов на все асики?"
+    : "Записать этот порядок пулов на выбранные асики?";
+  if (!confirm(question)) return;
+  setMessage(message, "Записываю пулы из файла...", null);
+  try {
+    const payload = await api("/api/pools/apply-config", {
+      method: "POST",
+      body: JSON.stringify({ miner_ids: selected.all ? [] : selected.ids }),
+    });
+    const rows = payload.results || [];
+    setMessage(message, resultText(payload), rows.every((item) => item.ok));
+    await loadPoolFile();
+  } catch (error) {
+    setMessage(message, error.message, false);
+  }
+};
+
 document.getElementById("loadPools").onclick = async () => {
   const message = document.getElementById("poolMsg");
   const minerId = document.getElementById("poolMiner").value;
-  if (!minerId) return;
+  if (!minerId || minerId === "*") {
+    setMessage(message, "Чтобы прочитать пулы, выберите один асик", false);
+    return;
+  }
   setMessage(message, "Читаю пулы...", null);
   try {
     const payload = await api(`/api/miners/${minerId}/pools`);
@@ -392,6 +590,11 @@ async function applyPools(minerIds) {
 document.getElementById("applyPoolOne").onclick = () => {
   const minerId = document.getElementById("poolMiner").value;
   if (!minerId) return;
+  if (minerId === "*") {
+    if (!confirm("Записать эти пулы на все асики?")) return;
+    applyPools([]);
+    return;
+  }
   if (!confirm("Записать пулы на выбранный асик?")) return;
   applyPools([minerId]);
 };

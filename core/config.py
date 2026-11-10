@@ -54,9 +54,16 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     miners_file: str = "miners.json"
+    pools_file: str = "pools.json"
 
     def miners_path(self) -> Path:
         path = Path(self.miners_file)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+
+    def pools_path(self) -> Path:
+        path = Path(self.pools_file)
         if not path.is_absolute():
             path = ROOT_DIR / path
         return path

@@ -155,8 +155,19 @@
       <div id="panel-pools" data-panel="pools" class="hidden">
         <section class="form-card">
           <div>
-            <h2>Смена пула</h2>
-            <p class="hint">Три слота, как в веб-морде. Пароль здесь — пароль пула, не пароль асика. Запись на Antminer может занять около полминуты. Vnish после записи перезапускает майнинг.</p>
+            <h2>Пулы из файла</h2>
+            <p class="hint">Перетащите пулы за полоску слева. Верхний записывается первым. Отметьте «Все» или нужные асики и запишите этот порядок одним нажатием. Номер из <code>worker</code> сам дописывается к кошельку.</p>
+          </div>
+          <div id="poolFileList" class="pool-order"></div>
+          <div id="poolWorkerList" class="list"></div>
+          <div id="poolTargets" class="pool-targets"></div>
+          <button id="applyPoolFile" class="solid" type="button">Записать на выбранные</button>
+          <p id="poolFileMsg" class="hint"></p>
+        </section>
+        <section class="form-card">
+          <div>
+            <h2>Ручная запись</h2>
+            <p class="hint">Если нужно записать пулы мимо файла. Пароль здесь — пароль пула. Запись на Antminer может занять около полминуты.</p>
           </div>
           <label>Асик
             <select id="poolMiner"></select>

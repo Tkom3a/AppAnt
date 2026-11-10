@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 Firmware = Literal["antminer", "vnish"]
@@ -27,6 +27,15 @@ class MinerConfig(BaseModel):
     # Optional absolute thresholds; if omitted, ratios from .env are used
     alert_ths: Optional[float] = None
     reboot_ths: Optional[float] = None
+    # Номер воркера. Дописывается к кошельку из pools.json: кошелек.1
+    worker: str = ""
+
+    @field_validator("worker", mode="before")
+    @classmethod
+    def worker_as_text(cls, value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
 
 
 class MinerSnapshot(BaseModel):
@@ -107,6 +116,14 @@ class PoolsCommand(BaseModel):
     pools: list[PoolSlot]
     miner_ids: list[str] = Field(default_factory=list)
     keep_worker: bool = False
+
+
+class PoolOrderBody(BaseModel):
+    order: list[int]
+
+
+class PoolApplyBody(BaseModel):
+    miner_ids: list[str] = Field(default_factory=list)
 
 
 class PresetCreate(BaseModel):

@@ -5,7 +5,8 @@
     "firmware": "antminer",
     "port": 8081,
     "expected_ths": 120,
-    "auto_reboot": true
+    "auto_reboot": true,
+    "worker": "1"
   },
   {
     "id": "asic2",
@@ -13,7 +14,8 @@
     "firmware": "antminer",
     "port": 8082,
     "expected_ths": 120,
-    "auto_reboot": true
+    "auto_reboot": true,
+    "worker": "2"
   },
   {
     "id": "vnish1",
@@ -21,6 +23,7 @@
     "firmware": "vnish",
     "port": 8090,
     "expected_ths": 120,
-    "auto_reboot": true
+    "auto_reboot": true,
+    "worker": "3"
   }
 ]

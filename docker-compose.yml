@@ -8,6 +8,7 @@ services:
     volumes:
       - ./.env:/app/.env:ro
       - ./miners.json:/app/miners.json:ro
+      - ./pools.json:/app/pools.json
       - ./data:/app/data
     ports:
       - "8486:8486"

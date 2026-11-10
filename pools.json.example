@@ -1,0 +1,23 @@
+[
+  {
+    "name": "основной",
+    "url": "stratum+tcp://pool.example.com:3333",
+    "user": "КОШЕЛЕК",
+    "pass": "x",
+    "priority": 1
+  },
+  {
+    "name": "запасной",
+    "url": "stratum+tcp://backup.example.com:3333",
+    "user": "КОШЕЛЕК",
+    "pass": "x",
+    "priority": 2
+  },
+  {
+    "name": "третий",
+    "url": "stratum+tcp://third.example.com:3333",
+    "user": "КОШЕЛЕК",
+    "pass": "x",
+    "priority": 3
+  }
+]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -9,8 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
-from models import DeviceRegister, PoolSlot, PoolsCommand, PresetCreate, SettingsPatch, SleepCommand
-from monitor import build_monitor
+from models import DeviceRegister, PoolApplyBody, PoolOrderBody, PoolSlot, PoolsCommand, PresetCreate, SettingsPatch, SleepCommand
+from monitor import build_monitor, save_pool_order
 from store import StateStore
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -222,6 +223,31 @@ async def write_miner_pools(miner_id: str, body: PoolsCommand):
     result = await get_monitor().write_pools(miner, _pool_slots(body.pools), body.keep_worker)
     if not result["ok"]:
         raise HTTPException(status_code=502, detail=result["detail"] or "не удалось записать пулы")
+    return result
+
+
+@app.put("/api/pools/order", dependencies=[Depends(require_token)])
+async def reorder_pools(body: PoolOrderBody):
+    try:
+        save_pool_order(get_monitor().settings, body.order)
+    except (OSError, json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return get_monitor().pool_file_status()
+
+
+@app.get("/api/pools/config", dependencies=[Depends(require_token)])
+async def pool_config():
+    return get_monitor().pool_file_status()
+
+
+@app.post("/api/pools/apply-config", dependencies=[Depends(require_token)])
+async def apply_pool_config(body: PoolApplyBody):
+    try:
+        result = await get_monitor().apply_pool_file(body.miner_ids)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="асик не найден")
+    if not result.get("ok", True) and "results" not in result:
+        raise HTTPException(status_code=400, detail=result.get("detail") or "pools.json")
     return result
 
 

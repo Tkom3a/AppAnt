@@ -705,6 +705,34 @@ select {
 }
 
 .pool-slots { display: grid; gap: 12px; }
+.pool-order { display: grid; gap: 8px; }
+.pool-targets { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.pool-targets .check-line { margin: 0; }
+.pool-card-drag {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  cursor: grab;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.pool-card-drag:active { cursor: grabbing; }
+.pool-card-drag.dragging { opacity: 0.45; }
+.pool-card-drag.over { border-color: rgba(255, 255, 255, 0.45); }
+.drag-handle {
+  color: var(--muted);
+  font-size: 18px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+.pool-move { display: flex; flex-direction: column; gap: 4px; }
+.pool-move button {
+  padding: 4px 8px;
+  line-height: 1;
+}
 .pool-slot {
   display: grid;
   gap: 8px;

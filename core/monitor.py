@@ -67,6 +67,99 @@ def load_miners(settings: Settings) -> list[MinerConfig]:
     return [MinerConfig.model_validate(item) for item in raw]
 
 
+def load_pool_file(settings: Settings) -> list[dict]:
+    path = settings.pools_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Не найден {path.name}. Скопируйте pools.json.example в pools.json"
+        )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("pools.json должен быть списком")
+    items: list[dict] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        try:
+            priority = int(item.get("priority", index + 1))
+        except (TypeError, ValueError):
+            priority = index + 1
+        items.append(
+            {
+                "name": str(item.get("name") or f"Пул {index + 1}").strip(),
+                "url": str(item.get("url") or "").strip(),
+                "user": str(item.get("user") or item.get("wallet") or "").strip(),
+                "password": str(item.get("pass") if item.get("pass") is not None else item.get("password") or "x"),
+                "priority": priority,
+                "order": index,
+            }
+        )
+    items.sort(key=lambda pool: (pool["priority"], pool["order"]))
+    filled = [pool for pool in items if pool["url"]]
+    if not filled:
+        raise ValueError("В pools.json нет пула с адресом")
+    return filled[:3]
+
+
+def save_pool_order(settings: Settings, order: list[int]) -> None:
+    path = settings.pools_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Не найден {path.name}. Скопируйте pools.json.example в pools.json"
+        )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("pools.json должен быть списком")
+    ranked: list[tuple[dict, int, int]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict) or not str(item.get("url") or "").strip():
+            continue
+        try:
+            priority = int(item.get("priority", index + 1))
+        except (TypeError, ValueError):
+            priority = index + 1
+        ranked.append((item, priority, index))
+    ranked.sort(key=lambda row: (row[1], row[2]))
+    ranked = ranked[:3]
+    if sorted(order) != list(range(len(ranked))):
+        raise ValueError("Передан неполный порядок пулов")
+    chosen = {id(ranked[index][0]) for index in order}
+    rewritten: list[dict] = []
+    for position, index in enumerate(order):
+        item = dict(ranked[index][0])
+        item["priority"] = position + 1
+        rewritten.append(item)
+    for item in raw:
+        if isinstance(item, dict) and id(item) not in chosen:
+            rewritten.append(item)
+    path.write_text(
+        json.dumps(rewritten, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def worker_name(wallet: str, worker: str) -> str:
+    wallet = wallet.strip()
+    suffix = str(worker or "").strip().lstrip(".")
+    if not wallet or not suffix:
+        return wallet
+    return f"{wallet}.{suffix}"
+
+
+def slots_for_miner(pools: list[dict], worker: str) -> list[dict]:
+    slots = [
+        {
+            "url": pool["url"],
+            "user": worker_name(pool["user"], worker),
+            "password": pool["password"],
+        }
+        for pool in pools[:3]
+    ]
+    while len(slots) < 3:
+        slots.append({"url": "", "user": "", "password": ""})
+    return slots
+
+
 class Monitor:
     def __init__(self, settings: Settings, store: StateStore, notify: Notify) -> None:
         self.settings = settings
@@ -385,6 +478,49 @@ class Monitor:
         else:
             await self._emit("warn", miner.id, f"{miner.name}: не удалось сменить пул — {view.detail}")
         return {"id": miner.id, "name": miner.name, "ok": view.ok, "detail": view.detail}
+
+    def pool_file_status(self) -> dict:
+        self.miners = load_miners(self.settings)
+        try:
+            pools = load_pool_file(self.settings)
+        except (OSError, json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
+            return {"ok": False, "detail": str(exc), "pools": [], "miners": []}
+        primary = pools[0]["user"] if pools else ""
+        return {
+            "ok": True,
+            "detail": "",
+            "pools": [
+                {
+                    "name": pool["name"],
+                    "url": pool["url"],
+                    "user": pool["user"],
+                    "priority": pool["priority"],
+                }
+                for pool in pools
+            ],
+            "miners": [
+                {
+                    "id": miner.id,
+                    "name": miner.name,
+                    "worker": miner.worker,
+                    "worker_user": worker_name(primary, miner.worker),
+                }
+                for miner in self.miners
+            ],
+        }
+
+    async def apply_pool_file(self, miner_ids: Optional[list[str]] = None) -> dict:
+        status = self.pool_file_status()
+        if not status["ok"]:
+            return status
+        pools = load_pool_file(self.settings)
+        miners = self.miners_by_ids(miner_ids or [])
+        results = []
+        for miner in miners:
+            slots = slots_for_miner(pools, miner.worker)
+            results.append(await self.write_pools(miner, slots, keep_worker=False))
+        status["results"] = results
+        return status
 
     async def _emit(self, level: str, miner_id: Optional[str], message: str) -> None:
         title = "УВЫ control"

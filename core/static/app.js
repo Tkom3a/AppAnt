@@ -125,6 +125,7 @@ function renderMiners(payload) {
           последний пинг: ${fmtTime(miner.last_ping_at)}${norm}
           ${miner.last_error ? `<br /><span class="err">ошибка: ${htmlEscape(miner.last_error)}</span>` : ""}
         </div>
+        <button class="reboot" data-open="${htmlEscape(miner.id)}" type="button">Открыть</button>
         <button class="reboot" data-id="${htmlEscape(miner.id)}" type="button">Перезагрузить</button>
       </article>
     `;
@@ -257,9 +258,14 @@ els.autoToggle.onchange = async () => {
 };
 
 els.miners.addEventListener("click", async (event) => {
+  const opener = event.target.closest("button[data-open]");
+  if (opener) {
+    fillMinerCard(opener.dataset.open);
+    return;
+  }
   const button = event.target.closest("button[data-id]");
   if (!button) {
-    const article = event.target.closest("article.miner");
+    const article = event.target.closest("article[data-id]");
     if (article) fillMinerCard(article.dataset.id);
     return;
   }
@@ -818,7 +824,7 @@ async function applyPools(minerIds) {
       body: JSON.stringify({
         pools: poolValues(),
         miner_ids: minerIds,
-        keep_worker: document.getElementById("keepWorker").checked,
+        keep_worker: Boolean(document.getElementById("keepWorker")?.checked),
       }),
     });
     const rows = payload.results || [];
@@ -829,15 +835,31 @@ async function applyPools(minerIds) {
 }
 
 document.getElementById("applyPoolOne").onclick = () => {
-  const ids = checkedMinerIds();
-  if (!ids.length) {
-    setMessage(document.getElementById("poolMsg"), "Отметьте асики или нажмите «Все»", false);
+  const message = document.getElementById("poolMsg");
+  const pools = poolValues();
+  if (!pools.some((pool) => pool.url)) {
+    setMessage(message, "Впишите адрес хотя бы первого пула", false);
     return;
   }
-  const all = ids.length === minerCatalog.length;
-  if (!confirm(all ? "Записать эти пулы на все асики?" : "Записать эти пулы на отмеченные асики?")) return;
-  applyPools(all ? [] : ids);
+  if (!confirm("Разослать эти пулы на все асики? К каждому кошельку допишется свой номер воркера.")) return;
+  broadcastPools(pools);
 };
+
+async function broadcastPools(pools) {
+  const message = document.getElementById("poolMsg");
+  setMessage(message, "Рассылаю на все асики...", null);
+  try {
+    const payload = await api("/api/pools/broadcast", {
+      method: "POST",
+      body: JSON.stringify({ pools }),
+    });
+    const rows = payload.results || [];
+    const saved = payload.saved === false ? " Файл pools.json не записался." : "";
+    setMessage(message, `${resultText(payload)}${saved}`, rows.length > 0 && rows.every((item) => item.ok));
+  } catch (error) {
+    setMessage(message, error.message, false);
+  }
+}
 
 document.getElementById("savePreset").onclick = async () => {
   const message = document.getElementById("poolMsg");

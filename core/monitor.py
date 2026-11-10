@@ -140,6 +140,23 @@ def save_pool_order(settings: Settings, order: list[int]) -> None:
     )
 
 
+def save_pool_entries(settings: Settings, slots: list[dict]) -> None:
+    path = settings.pools_path()
+    entries = []
+    for index, slot in enumerate(slots[:3], start=1):
+        entries.append(
+            {
+                "name": f"Пул {index}",
+                "url": str(slot.get("url") or "").strip(),
+                "user": str(slot.get("user") or "").strip(),
+                "pass": str(slot.get("password") or slot.get("pass") or "x"),
+                "priority": index,
+            }
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def worker_name(wallet: str, worker: str, known: Optional[list[str]] = None) -> str:
     wallet = wallet.strip()
     suffix = str(worker or "").strip().lstrip(".")
@@ -563,6 +580,31 @@ class Monitor:
             results.append(await self.write_pools(miner, slots, keep_worker=False))
         status["results"] = results
         return status
+
+    async def broadcast_pools(self, slots: list[dict]) -> dict:
+        self.miners = load_miners(self.settings)
+        known = [miner.worker for miner in self.miners]
+        try:
+            save_pool_entries(self.settings, slots)
+            saved = True
+            save_error = ""
+        except OSError as exc:
+            saved = False
+            save_error = str(exc)
+        results = []
+        for miner in self.miners:
+            prepared = []
+            for slot in slots[:3]:
+                item = {
+                    "url": str(slot.get("url") or "").strip(),
+                    "user": worker_name(str(slot.get("user") or ""), miner.worker, known),
+                    "password": str(slot.get("password") or slot.get("pass") or ""),
+                }
+                prepared.append(item)
+            while len(prepared) < 3:
+                prepared.append({"url": "", "user": "", "password": ""})
+            results.append(await self.write_pools(miner, prepared, keep_worker=False))
+        return {"ok": True, "saved": saved, "save_error": save_error, "results": results}
 
     async def _emit(self, level: str, miner_id: Optional[str], message: str) -> None:
         title = "УВЫ control"

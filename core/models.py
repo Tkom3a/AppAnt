@@ -141,6 +141,10 @@ class PoolApplyBody(BaseModel):
     miner_ids: list[str] = Field(default_factory=list)
 
 
+class PoolBroadcast(BaseModel):
+    pools: list[PoolSlot]
+
+
 class PresetCreate(BaseModel):
     name: str
     pools: list[PoolSlot]

@@ -198,7 +198,7 @@
         <section class="form-card">
           <div>
             <h2>Ручная запись</h2>
-            <p class="hint">Потяните всё окно пула за шапку. Верхнее окно записывается первым. Номер из <code>miners.json</code> подставится свой у каждого отмеченного асика.</p>
+            <p class="hint">Впишите адрес, кошелёк и пароль в окна. Верхнее окно — первый пул. Кнопка сразу отправит их на все асики: к кошельку допишется точка и номер из <code>worker</code>.</p>
           </div>
           <label>Прочитать с асика
             <select id="poolMiner"></select>
@@ -210,7 +210,7 @@
                 <p>Пул 1</p>
               </div>
               <input class="pool-url" type="text" placeholder="stratum+tcp://pool:3333" autocomplete="off" />
-              <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
+              <input class="pool-user" type="text" placeholder="кошелёк" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />
             </div>
             <div class="pool-slot">
@@ -219,7 +219,7 @@
                 <p>Пул 2</p>
               </div>
               <input class="pool-url" type="text" placeholder="запасной url" autocomplete="off" />
-              <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
+              <input class="pool-user" type="text" placeholder="кошелёк" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />
             </div>
             <div class="pool-slot">
@@ -228,17 +228,13 @@
                 <p>Пул 3</p>
               </div>
               <input class="pool-url" type="text" placeholder="запасной url" autocomplete="off" />
-              <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
+              <input class="pool-user" type="text" placeholder="кошелёк" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />
             </div>
           </div>
-          <label class="check-line">
-            <input id="keepWorker" type="checkbox" />
-            Не менять воркер, оставить как сейчас на асике
-          </label>
           <div class="row-actions">
             <button id="loadPools" type="button">Прочитать с асика</button>
-            <button id="applyPoolOne" class="solid" type="button">Записать на отмеченные</button>
+            <button id="applyPoolOne" class="solid" type="button">Разослать на все асики</button>
           </div>
           <p id="poolMsg" class="hint"></p>
         </section>

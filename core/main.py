@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
-from models import DeviceRegister, PoolApplyBody, PoolOrderBody, PoolSlot, PoolsCommand, PresetCreate, SettingsPatch, SleepCommand
+from models import DeviceRegister, PoolApplyBody, PoolBroadcast, PoolOrderBody, PoolSlot, PoolsCommand, PresetCreate, SettingsPatch, SleepCommand
 from monitor import build_monitor, save_pool_order, worker_name
 from store import StateStore
 
@@ -274,6 +274,14 @@ async def apply_pools(body: PoolsCommand):
                 prepared.append(item)
         results.append(await monitor.write_pools(miner, prepared, body.keep_worker))
     return {"results": results}
+
+
+@app.post("/api/pools/broadcast", dependencies=[Depends(require_token)])
+async def broadcast_pools(body: PoolBroadcast):
+    slots = _pool_slots(body.pools)
+    if not any(slot["url"] for slot in slots):
+        raise HTTPException(status_code=400, detail="Укажите адрес хотя бы одного пула")
+    return await get_monitor().broadcast_pools(slots)
 
 
 @app.post("/api/presets", dependencies=[Depends(require_token)])

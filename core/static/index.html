@@ -120,6 +120,31 @@
       <div id="panel-miners" data-panel="miners">
         <div id="miners" class="list"></div>
       </div>
+      <div id="minerDetail" class="miner-detail hidden">
+        <div class="miner-detail-panel" role="dialog" aria-modal="true" aria-labelledby="minerDetailTitle">
+          <div class="row">
+            <h2 id="minerDetailTitle">Асик</h2>
+            <button id="minerDetailClose" type="button">Закрыть</button>
+          </div>
+          <p id="minerDetailSub" class="hint"></p>
+          <section>
+            <h3>Температуры</h3>
+            <div id="minerDetailTemps" class="detail-grid"></div>
+          </section>
+          <section>
+            <h3>Вентиляторы</h3>
+            <div id="minerDetailFans" class="detail-grid"></div>
+          </section>
+          <section>
+            <h3>Пулы</h3>
+            <div id="minerDetailPools" class="detail-list"></div>
+          </section>
+          <section>
+            <h3>События этого асика</h3>
+            <div id="minerDetailEvents" class="detail-events"></div>
+          </section>
+        </div>
+      </div>
 
       <div id="panel-sleep" data-panel="sleep" class="hidden">
         <section class="form-card">
@@ -173,26 +198,35 @@
         <section class="form-card">
           <div>
             <h2>Ручная запись</h2>
-            <p class="hint">Кошелёк можно писать без номера. Для каждого отмеченного асика номер из <code>miners.json</code> подставится сам. Если в конце уже стоит старый номер, он заменится.</p>
+            <p class="hint">Потяните всё окно пула за шапку. Верхнее окно записывается первым. Номер из <code>miners.json</code> подставится свой у каждого отмеченного асика.</p>
           </div>
           <label>Прочитать с асика
             <select id="poolMiner"></select>
           </label>
           <div id="poolSlots" class="pool-slots">
             <div class="pool-slot">
-              <p>Пул 1</p>
+              <div class="pool-slot-bar">
+                <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+                <p>Пул 1</p>
+              </div>
               <input class="pool-url" type="text" placeholder="stratum+tcp://pool:3333" autocomplete="off" />
               <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />
             </div>
             <div class="pool-slot">
-              <p>Пул 2</p>
+              <div class="pool-slot-bar">
+                <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+                <p>Пул 2</p>
+              </div>
               <input class="pool-url" type="text" placeholder="запасной url" autocomplete="off" />
               <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />
             </div>
             <div class="pool-slot">
-              <p>Пул 3</p>
+              <div class="pool-slot-bar">
+                <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+                <p>Пул 3</p>
+              </div>
               <input class="pool-url" type="text" placeholder="запасной url" autocomplete="off" />
               <input class="pool-user" type="text" placeholder="воркер" autocomplete="off" />
               <input class="pool-pass" type="text" placeholder="пароль пула" autocomplete="off" />

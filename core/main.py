@@ -96,6 +96,9 @@ async def list_miners():
                 "last_reboot_reason": None,
                 "cooldown_until": None,
                 "auto_reboots_in_window": 0,
+                "pools": [],
+                "fans_rpm": [],
+                "temperatures": [],
             }
         item["worker"] = miner.worker
         items.append(item)

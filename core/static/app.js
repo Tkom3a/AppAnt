@@ -11,6 +11,8 @@ const STATUS = {
 const state = {
   url: localStorage.getItem("coreUrl") || location.origin,
   token: localStorage.getItem("apiToken") || "",
+  miners: [],
+  events: [],
 };
 
 const els = {
@@ -91,6 +93,7 @@ function renderMiners(payload) {
   els.autoState.classList.toggle("on", Boolean(payload.auto_reboot_enabled));
   els.autoState.classList.toggle("off", !payload.auto_reboot_enabled);
   els.autoToggle.checked = Boolean(payload.auto_reboot_enabled);
+  state.miners = miners;
   els.miners.innerHTML = miners.map((miner, index) => {
     const hs = miner.hashrate_ths == null ? "—" : miner.hashrate_ths.toFixed(1);
     const temp = miner.temperature_c == null ? "" : `<span class="temp">${Math.round(miner.temperature_c)}°C</span>`;
@@ -101,11 +104,12 @@ function renderMiners(payload) {
     const pctLabel = miner.hashrate_ths == null || !expected ? "—" : `${Math.round(pct)}%`;
     const norm = expected ? `<br />норма ${expected} TH/s` : "";
     return `
-      <article class="miner ${miner.status}" style="--d:${index}">
+      <article class="miner ${miner.status}" style="--d:${index}" data-id="${htmlEscape(miner.id)}">
         <div class="row">
           <div>
-            <div class="name">${miner.name}</div>
-            <div class="sub">${miner.firmware} · порт ${miner.port}</div>
+            <div class="name">${htmlEscape(miner.name)}</div>
+            <div class="sub">${htmlEscape(miner.firmware)} · порт ${miner.port}</div>
+            <div class="sub pool-now">${htmlEscape(activePoolText(miner))}</div>
           </div>
           <span class="badge ${miner.status}">${STATUS[miner.status] || miner.status}</span>
         </div>
@@ -119,16 +123,63 @@ function renderMiners(payload) {
         </div>
         <div class="meta">
           последний пинг: ${fmtTime(miner.last_ping_at)}${norm}
-          ${miner.last_error ? `<br /><span class="err">ошибка: ${miner.last_error}</span>` : ""}
+          ${miner.last_error ? `<br /><span class="err">ошибка: ${htmlEscape(miner.last_error)}</span>` : ""}
         </div>
-        <button class="reboot" data-id="${miner.id}" type="button">Перезагрузить</button>
+        <button class="reboot" data-id="${htmlEscape(miner.id)}" type="button">Перезагрузить</button>
       </article>
     `;
   }).join("") || `<div class="empty">Асиков в списке нет</div>`;
+  if (openMinerId) fillMinerCard(openMinerId);
+}
+
+function activePoolText(miner) {
+  const pools = miner.pools || [];
+  const current = pools.find((pool) => pool.active && pool.url) || pools.find((pool) => pool.url);
+  if (!current) return "пул ещё не известен";
+  const url = String(current.url).replace(/^stratum\+\w+:\/\//, "");
+  return current.user ? `${url} · ${current.user}` : url;
+}
+
+let openMinerId = "";
+
+function fillMinerCard(minerId) {
+  const miner = state.miners.find((item) => item.id === minerId);
+  const card = document.getElementById("minerDetail");
+  if (!miner || !card) return;
+  openMinerId = minerId;
+  card.classList.remove("hidden");
+  document.getElementById("minerDetailTitle").textContent = miner.name;
+  document.getElementById("minerDetailSub").textContent = `${firmwareLabel(miner.firmware)} · порт ${miner.port} · ${STATUS[miner.status] || miner.status}`;
+  const temps = miner.temperatures || [];
+  document.getElementById("minerDetailTemps").innerHTML = temps.map((item) => `
+    <article><div class="name">${htmlEscape(item.label)}</div><div class="hash">${Math.round(item.value)}°C</div></article>
+  `).join("") || `<div class="empty">Температур ещё нет</div>`;
+  const fans = miner.fans_rpm || [];
+  document.getElementById("minerDetailFans").innerHTML = fans.map((rpm, index) => `
+    <article><div class="name">Вентилятор ${index + 1}</div><div class="hash">${rpm}</div><div class="sub">об/мин</div></article>
+  `).join("") || `<div class="empty">Оборотов ещё нет</div>`;
+  const pools = miner.pools || [];
+  document.getElementById("minerDetailPools").innerHTML = pools.map((pool) => `
+    <article>
+      <div class="name">${pool.active ? "подключён" : (htmlEscape(pool.status) || "запасной")}</div>
+      <div class="sub">${htmlEscape(String(pool.url || "").replace(/^stratum\+\w+:\/\//, ""))}</div>
+      <div class="sub">${htmlEscape(pool.user || "")}</div>
+    </article>
+  `).join("") || `<div class="empty">Пулы ещё не прочитаны</div>`;
+  const events = state.events.filter((event) => event.miner_id === minerId);
+  document.getElementById("minerDetailEvents").innerHTML = events.map((event) => `
+    <div><time>${fmtTime(event.ts)}</time>${htmlEscape(event.message)}</div>
+  `).join("") || `<div class="empty">Событий по этому асику нет</div>`;
+}
+
+function closeMinerCard() {
+  openMinerId = "";
+  document.getElementById("minerDetail").classList.add("hidden");
 }
 
 function renderEvents(payload) {
   const events = payload.events || [];
+  state.events = events;
   els.eventsCount.textContent = String(events.length);
   els.events.innerHTML = events.slice(0, 20).map((event) => `
     <div>
@@ -153,6 +204,14 @@ async function loadAll() {
   renderPresets(settings.pool_presets || []);
   await loadPoolFile();
 }
+
+document.getElementById("minerDetailClose").onclick = closeMinerCard;
+document.getElementById("minerDetail").addEventListener("click", (event) => {
+  if (event.target.id === "minerDetail") closeMinerCard();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMinerCard();
+});
 
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
@@ -199,7 +258,11 @@ els.autoToggle.onchange = async () => {
 
 els.miners.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-id]");
-  if (!button) return;
+  if (!button) {
+    const article = event.target.closest("article.miner");
+    if (article) fillMinerCard(article.dataset.id);
+    return;
+  }
   if (!confirm("Перезагрузить этот асик?")) return;
   button.disabled = true;
   button.textContent = "Отправляю ребут...";
@@ -425,6 +488,8 @@ async function savePoolOrder(order) {
 function bindPoolDrag(list) {
   let dragged = null;
   let startOrder = "";
+  let frame = 0;
+  let lastY = 0;
 
   function moveCard(card, y) {
     const cards = [...list.querySelectorAll(".pool-card-drag")];
@@ -444,8 +509,10 @@ function bindPoolDrag(list) {
     }
   }
 
-  function finish() {
-    if (!dragged) return;
+  function finish(card) {
+    if (dragged !== card) return;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
     dragged.classList.remove("dragging");
     const order = currentPoolOrder();
     const changed = order.join(",") !== startOrder;
@@ -454,21 +521,27 @@ function bindPoolDrag(list) {
   }
 
   list.querySelectorAll(".pool-card-drag").forEach((card) => {
-    card.addEventListener("pointerdown", (event) => {
-      if (event.target.closest("button")) return;
+    const handle = card.querySelector(".drag-handle");
+    if (!handle) return;
+    handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 && event.pointerType === "mouse") return;
       dragged = card;
       startOrder = currentPoolOrder().join(",");
       card.classList.add("dragging");
-      card.setPointerCapture(event.pointerId);
+      handle.setPointerCapture(event.pointerId);
       event.preventDefault();
     });
-    card.addEventListener("pointermove", (event) => {
+    handle.addEventListener("pointermove", (event) => {
       if (dragged !== card) return;
-      moveCard(card, event.clientY);
+      lastY = event.clientY;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (dragged === card) moveCard(card, lastY);
+      });
     });
-    card.addEventListener("pointerup", finish);
-    card.addEventListener("pointercancel", finish);
+    handle.addEventListener("pointerup", () => finish(card));
+    handle.addEventListener("pointercancel", () => finish(card));
   });
 
   list.querySelectorAll("button[data-move]").forEach((button) => {
@@ -484,6 +557,70 @@ function bindPoolDrag(list) {
     });
   });
 }
+
+function renumberSlots() {
+  document.querySelectorAll("#poolSlots .pool-slot p").forEach((title, index) => {
+    title.textContent = `Пул ${index + 1}`;
+  });
+}
+
+function bindSlotDrag() {
+  const list = document.getElementById("poolSlots");
+  if (!list) return;
+  let dragged = null;
+  let frame = 0;
+  let lastY = 0;
+
+  function moveSlot(slot, y) {
+    const slots = [...list.querySelectorAll(".pool-slot")];
+    const index = slots.indexOf(slot);
+    const previous = slots[index - 1];
+    const next = slots[index + 1];
+    if (previous) {
+      const rect = previous.getBoundingClientRect();
+      if (y < rect.top + rect.height / 2) {
+        previous.before(slot);
+        return;
+      }
+    }
+    if (next) {
+      const rect = next.getBoundingClientRect();
+      if (y > rect.top + rect.height / 2) next.after(slot);
+    }
+  }
+
+  function finish(slot) {
+    if (dragged !== slot) return;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    dragged.classList.remove("dragging");
+    dragged = null;
+    renumberSlots();
+  }
+
+  list.querySelectorAll(".pool-slot").forEach((slot) => {
+    slot.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("input, textarea, button, select, a")) return;
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      dragged = slot;
+      slot.classList.add("dragging");
+      slot.setPointerCapture(event.pointerId);
+    });
+    slot.addEventListener("pointermove", (event) => {
+      if (dragged !== slot) return;
+      lastY = event.clientY;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (dragged === slot) moveSlot(slot, lastY);
+      });
+    });
+    slot.addEventListener("pointerup", () => finish(slot));
+    slot.addEventListener("pointercancel", () => finish(slot));
+  });
+}
+
+bindSlotDrag();
 
 async function loadPoolFile() {
   try {

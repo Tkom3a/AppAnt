@@ -24,6 +24,9 @@ class MinerReading:
     elapsed_seconds: Optional[int] = None
     error: Optional[str] = None
     raw: Optional[dict[str, Any]] = None
+    pools: Optional[list[dict[str, Any]]] = None
+    fans: Optional[list[int]] = None
+    temperatures: Optional[list[dict[str, Any]]] = None
 
 
 def credentials_for(miner_id: str, firmware: str, settings) -> tuple[str, str]:
@@ -78,6 +81,98 @@ def _first_number(pairs: list[tuple[str, Any]], keys: list[str]) -> Optional[flo
     return None
 
 
+def _plain_number(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pools_from_items(items: Any) -> list[dict[str, Any]]:
+    pools: list[dict[str, Any]] = []
+    if not isinstance(items, list):
+        return pools
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or item.get("URL") or "").strip()
+        user = str(item.get("user") or item.get("User") or "").strip()
+        status = str(item.get("status") or item.get("Status") or "").strip()
+        flag = item.get("Stratum Active", item.get("stratum_active"))
+        active = bool(flag) or status.lower() in {"alive", "active", "working", "enabled"}
+        if not url and not user:
+            continue
+        pools.append({"url": url, "user": user, "status": status, "active": active})
+    if pools and not any(pool["active"] for pool in pools):
+        pools[0]["active"] = True
+    return pools[:3]
+
+
+def _hardware_antminer(payload: Any) -> tuple[list[dict[str, Any]], list[int]]:
+    temps: list[dict[str, Any]] = []
+    fans: list[int] = []
+    labels = {
+        "temp_max": "макс.",
+        "temperature": "плата",
+        "temp1": "плата 1",
+        "temp2": "плата 2",
+        "temp3": "плата 3",
+        "temp2_1": "чипы 1",
+        "temp2_2": "чипы 2",
+        "temp2_3": "чипы 3",
+    }
+    seen: set[str] = set()
+    seen_fans: set[str] = set()
+    for key, value in _walk(payload):
+        number = _plain_number(value)
+        if number is None:
+            continue
+        low = key.lower()
+        if low in labels and low not in seen:
+            seen.add(low)
+            temps.append({"label": labels[low], "value": round(number, 1)})
+        fan_key = low.replace(" ", "")
+        if fan_key in seen_fans:
+            continue
+        if fan_key in {"fanspeedin", "fanspeedout"} or (
+            low.startswith("fan") and "pwm" not in low and "num" not in low and "speed" not in low
+        ):
+            rpm = int(number)
+            if 100 <= rpm <= 20000:
+                seen_fans.add(fan_key)
+                fans.append(rpm)
+    return temps[:8], fans[:8]
+
+
+def _hardware_vnish(miner: dict[str, Any]) -> tuple[list[dict[str, Any]], list[int]]:
+    temps: list[dict[str, Any]] = []
+    chip = miner.get("chip_temp")
+    pcb = miner.get("pcb_temp")
+    if isinstance(chip, dict) and _plain_number(chip.get("max")) is not None:
+        temps.append({"label": "чипы", "value": round(float(chip["max"]), 1)})
+    if isinstance(pcb, dict) and _plain_number(pcb.get("max")) is not None:
+        temps.append({"label": "платы", "value": round(float(pcb["max"]), 1)})
+    chains = miner.get("chains")
+    if isinstance(chains, list):
+        for index, chain in enumerate(chains, 1):
+            if not isinstance(chain, dict):
+                continue
+            for key, title in (("chip_temp", "чипы"), ("pcb_temp", "плата")):
+                block = chain.get(key)
+                if isinstance(block, dict) and _plain_number(block.get("max")) is not None:
+                    temps.append({"label": f"{title} {index}", "value": round(float(block["max"]), 1)})
+    fans: list[int] = []
+    cooling = miner.get("cooling") if isinstance(miner.get("cooling"), dict) else {}
+    for fan in cooling.get("fans") or []:
+        if not isinstance(fan, dict):
+            continue
+        rpm = _plain_number(fan.get("rpm"))
+        if rpm is None:
+            continue
+        fans.append(int(rpm))
+    return temps[:12], fans[:8]
+
+
 def parse_antminer(payload: Any, expected_ths: float) -> MinerReading:
     pairs = _walk(payload)
     hashrate = _first_number(
@@ -114,12 +209,21 @@ def parse_antminer(payload: Any, expected_ths: float) -> MinerReading:
             ths = hashrate / 1000.0
         else:
             ths = to_ths(hashrate, expected_ths)
+    temps, fans = _hardware_antminer(payload)
+    pools = []
+    if isinstance(payload, dict):
+        pools = _pools_from_items(payload.get("POOLS") or payload.get("pools"))
+    if temp is None and temps:
+        temp = max(item["value"] for item in temps)
     return MinerReading(
         online=True,
         hashrate_ths=ths,
         temperature_c=temp,
         elapsed_seconds=int(elapsed) if elapsed is not None else None,
         raw=payload if isinstance(payload, dict) else None,
+        pools=pools,
+        fans=fans,
+        temperatures=temps,
     )
 
 
@@ -151,12 +255,19 @@ def parse_vnish(payload: Any, expected_ths: float) -> MinerReading:
     status = miner.get("miner_status")
     if isinstance(status, dict):
         elapsed = status.get("miner_state_time")
+    temps, fans = _hardware_vnish(miner)
+    pools = _pools_from_items(miner.get("pools"))
+    if temp is None and temps:
+        temp = max(item["value"] for item in temps)
     return MinerReading(
         online=True,
         hashrate_ths=to_ths(hashrate, expected_ths),
         temperature_c=float(temp) if temp is not None else None,
         elapsed_seconds=int(elapsed) if elapsed is not None else None,
         raw=payload if isinstance(payload, dict) else None,
+        pools=pools,
+        fans=fans,
+        temperatures=temps,
     )
 
 
@@ -230,8 +341,33 @@ class MinerClient:
                     continue
                 reading = parse_antminer(payload, expected_ths)
                 if reading.hashrate_ths is not None or reading.online:
+                    await self._fill_antminer_extra(client, port, auth, reading)
                     return reading
             return MinerReading(online=False, error=last_error)
+
+    async def _fill_antminer_extra(self, client, port: int, auth, reading: MinerReading) -> None:
+        try:
+            response = await client.get(self._url(port, "/cgi-bin/pools.cgi"), auth=auth)
+            payload = _as_json(response) if response.status_code < 400 else None
+            if isinstance(payload, dict):
+                pools = _pools_from_items(payload.get("POOLS") or payload.get("pools"))
+                if pools:
+                    reading.pools = pools
+        except (httpx.HTTPError, ValueError):
+            pass
+        if reading.temperatures or reading.fans:
+            return
+        try:
+            response = await client.get(self._url(port, "/cgi-bin/stats.cgi"), auth=auth)
+            payload = _as_json(response) if response.status_code < 400 else None
+            if isinstance(payload, dict):
+                temps, fans = _hardware_antminer(payload)
+                if temps:
+                    reading.temperatures = temps
+                if fans:
+                    reading.fans = fans
+        except (httpx.HTTPError, ValueError):
+            pass
 
     async def _reboot_antminer(
         self,
@@ -292,7 +428,16 @@ class MinerClient:
             payload = _as_json(response)
             if payload is None:
                 return MinerReading(online=False, error="invalid json")
-            return parse_vnish(payload, expected_ths)
+            reading = parse_vnish(payload, expected_ths)
+            if not reading.pools:
+                try:
+                    settings = await self._vnish_call(client, port, token, "GET", "/api/v1/settings")
+                    data = _as_json(settings) if settings.status_code < 400 else None
+                    if isinstance(data, dict):
+                        reading.pools = _pools_from_items(_find_pools(data) or [])
+                except (httpx.HTTPError, ValueError):
+                    pass
+            return reading
 
     async def _reboot_vnish(
         self,

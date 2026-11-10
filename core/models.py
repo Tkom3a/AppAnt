@@ -38,6 +38,18 @@ class MinerConfig(BaseModel):
         return str(value).strip()
 
 
+class LivePool(BaseModel):
+    url: str = ""
+    user: str = ""
+    status: str = ""
+    active: bool = False
+
+
+class LiveTemp(BaseModel):
+    label: str
+    value: float
+
+
 class MinerSnapshot(BaseModel):
     id: str
     name: str
@@ -56,6 +68,9 @@ class MinerSnapshot(BaseModel):
     last_reboot_reason: Optional[str] = None
     cooldown_until: Optional[str] = None
     auto_reboots_in_window: int = 0
+    pools: list[LivePool] = Field(default_factory=list)
+    fans_rpm: list[int] = Field(default_factory=list)
+    temperatures: list[LiveTemp] = Field(default_factory=list)
 
 
 class EventItem(BaseModel):

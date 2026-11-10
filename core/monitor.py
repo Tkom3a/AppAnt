@@ -297,6 +297,9 @@ class Monitor:
             last_reboot_reason=previous.last_reboot_reason if previous else None,
             cooldown_until=previous.cooldown_until if previous else None,
             auto_reboots_in_window=previous.auto_reboots_in_window if previous else 0,
+            pools=(reading.pools or []) if reading.online else (previous.pools if previous else []),
+            fans_rpm=(reading.fans or []) if reading.online else (previous.fans_rpm if previous else []),
+            temperatures=(reading.temperatures or []) if reading.online else (previous.temperatures if previous else []),
         )
 
     def _alert_ths(self, miner: MinerConfig) -> float:

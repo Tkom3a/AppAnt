@@ -706,28 +706,68 @@ select {
 
 .pool-slots { display: grid; gap: 12px; }
 .pool-order { display: grid; gap: 8px; }
-.pool-targets { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.pool-targets .check-line { margin: 0; }
+.miner-menu { display: grid; gap: 8px; }
+.miner-menu-button { text-align: left; }
+.miner-menu-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(7, 9, 13, 0.45);
+}
+.miner-menu-panel.hidden { display: none; }
+.miner-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.miner-row .fw {
+  display: block;
+  margin-left: 28px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.miner-row .wallet {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+.wallet-preview {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.45;
+}
 .pool-card-drag {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
-  cursor: grab;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
-.pool-card-drag:active { cursor: grabbing; }
 .pool-card-drag.dragging { opacity: 0.45; }
-.pool-card-drag.over { border-color: rgba(255, 255, 255, 0.45); }
 .drag-handle {
   color: var(--muted);
   font-size: 18px;
   letter-spacing: -2px;
   user-select: none;
+  cursor: grab;
+  touch-action: none;
+  padding: 8px 4px;
 }
+.drag-handle:active { cursor: grabbing; }
 .pool-move { display: flex; flex-direction: column; gap: 4px; }
 .pool-move button {
   padding: 4px 8px;

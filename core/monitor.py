@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -32,11 +33,12 @@ def parse_iso(value: Optional[str]) -> Optional[datetime]:
 def in_sleep_window(start: str, end: str, tz_name: str, now: Optional[datetime] = None) -> bool:
     from zoneinfo import ZoneInfo
 
+    moment = now or utcnow()
     try:
-        zone = ZoneInfo(tz_name or "Europe/Moscow")
+        local = moment.astimezone(ZoneInfo(tz_name or "Europe/Moscow"))
     except Exception:
-        zone = ZoneInfo("Europe/Moscow")
-    local = (now or utcnow()).astimezone(zone)
+        # В python:3.12-slim нет tzdata, пока пакет не установлен.
+        local = moment.astimezone(timezone(timedelta(hours=3)))
 
     def minutes(value: str) -> int:
         hour, minute = value.split(":", 1)
@@ -138,19 +140,26 @@ def save_pool_order(settings: Settings, order: list[int]) -> None:
     )
 
 
-def worker_name(wallet: str, worker: str) -> str:
+def worker_name(wallet: str, worker: str, known: Optional[list[str]] = None) -> str:
     wallet = wallet.strip()
     suffix = str(worker or "").strip().lstrip(".")
     if not wallet or not suffix:
         return wallet
+    if "." in wallet:
+        head, tail = wallet.rsplit(".", 1)
+        tail = tail.strip()
+        known_set = {str(item or "").strip().lstrip(".") for item in (known or [])}
+        known_set.discard("")
+        if tail in known_set or tail.isdigit():
+            wallet = head
     return f"{wallet}.{suffix}"
 
 
-def slots_for_miner(pools: list[dict], worker: str) -> list[dict]:
+def slots_for_miner(pools: list[dict], worker: str, known: Optional[list[str]] = None) -> list[dict]:
     slots = [
         {
             "url": pool["url"],
-            "user": worker_name(pool["user"], worker),
+            "user": worker_name(pool["user"], worker, known),
             "password": pool["password"],
         }
         for pool in pools[:3]
@@ -166,7 +175,19 @@ class Monitor:
         self.store = store
         self.notify = notify
         self.client = MinerClient(settings.location_ip, settings.miner_timeout_seconds)
-        self.miners = load_miners(settings)
+        self.miners_error = ""
+        try:
+            self.miners = load_miners(settings)
+        except (OSError, json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
+            self.miners = []
+            self.miners_error = str(exc)
+            print(f"ОШИБКА: miners.json не прочитан ({settings.miners_path()}): {exc}")
+        pools_path = settings.pools_path()
+        if pools_path.is_dir():
+            print(
+                "ОШИБКА: pools.json смонтирован как папка. "
+                "Остановите контейнер, удалите эту папку на сервере и положите файл pools.json"
+            )
         self._task: Optional[asyncio.Task] = None
         self._stop = asyncio.Event()
 
@@ -192,15 +213,20 @@ class Monitor:
             self._task = None
 
     async def _loop(self) -> None:
-        await self.poll_all()
         while not self._stop.is_set():
+            try:
+                await self.poll_all()
+            except Exception:
+                traceback.print_exc()
+            if self._stop.is_set():
+                break
             try:
                 await asyncio.wait_for(
                     self._stop.wait(),
                     timeout=self.settings.poll_interval_seconds,
                 )
             except asyncio.TimeoutError:
-                await self.poll_all()
+                continue
 
     async def poll_all(self) -> list[MinerSnapshot]:
         results = await asyncio.gather(
@@ -473,11 +499,21 @@ class Monitor:
                 if existing:
                     slot["user"] = existing
         view = await self.client.set_pools(miner.firmware, miner.port, user, password, slots)
+        if miner.firmware == "vnish":
+            method = "Vnish: пароль и unlock"
+        else:
+            method = "Antminer: логин и digest"
         if view.ok:
-            await self._emit("info", miner.id, f"{miner.name}: пулы обновлены")
+            await self._emit("info", miner.id, f"{miner.name}: пулы обновлены ({method})")
         else:
             await self._emit("warn", miner.id, f"{miner.name}: не удалось сменить пул — {view.detail}")
-        return {"id": miner.id, "name": miner.name, "ok": view.ok, "detail": view.detail}
+        return {
+            "id": miner.id,
+            "name": miner.name,
+            "firmware": miner.firmware,
+            "ok": view.ok,
+            "detail": view.detail or method,
+        }
 
     def pool_file_status(self) -> dict:
         self.miners = load_miners(self.settings)
@@ -486,6 +522,7 @@ class Monitor:
         except (OSError, json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
             return {"ok": False, "detail": str(exc), "pools": [], "miners": []}
         primary = pools[0]["user"] if pools else ""
+        known = [miner.worker for miner in self.miners]
         return {
             "ok": True,
             "detail": "",
@@ -502,8 +539,9 @@ class Monitor:
                 {
                     "id": miner.id,
                     "name": miner.name,
+                    "firmware": miner.firmware,
                     "worker": miner.worker,
-                    "worker_user": worker_name(primary, miner.worker),
+                    "worker_user": worker_name(primary, miner.worker, known),
                 }
                 for miner in self.miners
             ],
@@ -515,9 +553,10 @@ class Monitor:
             return status
         pools = load_pool_file(self.settings)
         miners = self.miners_by_ids(miner_ids or [])
+        known = [miner.worker for miner in self.miners]
         results = []
         for miner in miners:
-            slots = slots_for_miner(pools, miner.worker)
+            slots = slots_for_miner(pools, miner.worker, known)
             results.append(await self.write_pools(miner, slots, keep_worker=False))
         status["results"] = results
         return status

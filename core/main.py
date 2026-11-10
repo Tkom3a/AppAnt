@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
 from models import DeviceRegister, PoolApplyBody, PoolOrderBody, PoolSlot, PoolsCommand, PresetCreate, SettingsPatch, SleepCommand
-from monitor import build_monitor, save_pool_order
+from monitor import build_monitor, save_pool_order, worker_name
 from store import StateStore
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -76,29 +76,29 @@ async def list_miners():
     for miner in monitor.miners:
         snap = store.get_snapshot(miner.id)
         if snap:
-            items.append(snap.model_dump())
+            item = snap.model_dump()
         else:
-            items.append(
-                {
-                    "id": miner.id,
-                    "name": miner.name,
-                    "firmware": miner.firmware,
-                    "port": miner.port,
-                    "expected_ths": miner.expected_ths,
-                    "auto_reboot": miner.auto_reboot,
-                    "status": "unknown",
-                    "online": False,
-                    "hashrate_ths": None,
-                    "temperature_c": None,
-                    "elapsed_seconds": None,
-                    "last_ping_at": None,
-                    "last_error": None,
-                    "last_reboot_at": None,
-                    "last_reboot_reason": None,
-                    "cooldown_until": None,
-                    "auto_reboots_in_window": 0,
-                }
-            )
+            item = {
+                "id": miner.id,
+                "name": miner.name,
+                "firmware": miner.firmware,
+                "port": miner.port,
+                "expected_ths": miner.expected_ths,
+                "auto_reboot": miner.auto_reboot,
+                "status": "unknown",
+                "online": False,
+                "hashrate_ths": None,
+                "temperature_c": None,
+                "elapsed_seconds": None,
+                "last_ping_at": None,
+                "last_error": None,
+                "last_reboot_at": None,
+                "last_reboot_reason": None,
+                "cooldown_until": None,
+                "auto_reboots_in_window": 0,
+            }
+        item["worker"] = miner.worker
+        items.append(item)
     return {
         "location_ip": settings.location_ip,
         "poll_interval_seconds": settings.poll_interval_seconds,
@@ -259,9 +259,17 @@ async def apply_pools(body: PoolsCommand):
     except KeyError:
         raise HTTPException(status_code=404, detail="miner not found")
     slots = _pool_slots(body.pools)
+    known = [item.worker for item in monitor.miners]
     results = []
     for miner in miners:
-        results.append(await monitor.write_pools(miner, slots, body.keep_worker))
+        prepared = slots
+        if not body.keep_worker:
+            prepared = []
+            for slot in slots:
+                item = dict(slot)
+                item["user"] = worker_name(item.get("user", ""), miner.worker, known)
+                prepared.append(item)
+        results.append(await monitor.write_pools(miner, prepared, body.keep_worker))
     return {"results": results}
 
 

@@ -13,6 +13,7 @@ const state = {
   token: localStorage.getItem("apiToken") || "",
   miners: [],
   events: [],
+  poolsControl: true,
 };
 
 const els = {
@@ -102,11 +103,11 @@ function renderMiners(payload) {
       ? 0
       : Math.max(0, Math.min(100, (miner.hashrate_ths / expected) * 100));
     const pctLabel = miner.hashrate_ths == null || !expected ? "—" : `${Math.round(pct)}%`;
-    const norm = expected ? `<br />норма ${expected} TH/s` : "";
+    const norm = expected ? ` · норма ${expected} TH/s` : "";
     return `
       <article class="miner ${miner.status}" style="--d:${index}" data-id="${htmlEscape(miner.id)}">
         <div class="row">
-          <div>
+          <div class="miner-copy">
             <div class="name">${htmlEscape(miner.name)}</div>
             <div class="sub">${htmlEscape(miner.firmware)} · порт ${miner.port}</div>
             <div class="sub pool-now">${htmlEscape(activePoolText(miner))}</div>
@@ -125,8 +126,10 @@ function renderMiners(payload) {
           последний пинг: ${fmtTime(miner.last_ping_at)}${norm}
           ${miner.last_error ? `<br /><span class="err">ошибка: ${htmlEscape(miner.last_error)}</span>` : ""}
         </div>
-        <button class="reboot" data-open="${htmlEscape(miner.id)}" type="button">Открыть</button>
-        <button class="reboot" data-id="${htmlEscape(miner.id)}" type="button">Перезагрузить</button>
+        <div class="miner-actions">
+          <button class="reboot" data-open="${htmlEscape(miner.id)}" type="button">Открыть</button>
+          <button class="reboot" data-id="${htmlEscape(miner.id)}" type="button">Перезагрузить</button>
+        </div>
       </article>
     `;
   }).join("") || `<div class="empty">Асиков в списке нет</div>`;
@@ -134,6 +137,7 @@ function renderMiners(payload) {
 }
 
 function activePoolText(miner) {
+  if (!state.poolsControl) return "проверка пулов выключена";
   const pools = miner.pools || [];
   const current = pools.find((pool) => pool.active && pool.url) || pools.find((pool) => pool.url);
   if (!current) return "пул ещё не известен";
@@ -159,14 +163,14 @@ function fillMinerCard(minerId) {
   document.getElementById("minerDetailFans").innerHTML = fans.map((rpm, index) => `
     <article><div class="name">Вентилятор ${index + 1}</div><div class="hash">${rpm}</div><div class="sub">об/мин</div></article>
   `).join("") || `<div class="empty">Оборотов ещё нет</div>`;
-  const pools = miner.pools || [];
+  const pools = state.poolsControl ? (miner.pools || []) : [];
   document.getElementById("minerDetailPools").innerHTML = pools.map((pool) => `
     <article>
       <div class="name">${pool.active ? "подключён" : (htmlEscape(pool.status) || "запасной")}</div>
       <div class="sub">${htmlEscape(String(pool.url || "").replace(/^stratum\+\w+:\/\//, ""))}</div>
       <div class="sub">${htmlEscape(pool.user || "")}</div>
     </article>
-  `).join("") || `<div class="empty">Пулы ещё не прочитаны</div>`;
+  `).join("") || `<div class="empty">${state.poolsControl ? "Пулы ещё не прочитаны" : "Проверка пулов выключена"}</div>`;
   const events = state.events.filter((event) => event.miner_id === minerId);
   document.getElementById("minerDetailEvents").innerHTML = events.map((event) => `
     <div><time>${fmtTime(event.ts)}</time>${htmlEscape(event.message)}</div>
@@ -198,6 +202,7 @@ async function loadAll() {
   ]);
   els.login.classList.add("hidden");
   els.dashboard.classList.remove("hidden");
+  applyPoolsControl(settings.pools_control_enabled !== false);
   renderMiners(miners);
   renderEvents(events);
   renderSleep(settings, miners);
@@ -255,6 +260,39 @@ els.autoToggle.onchange = async () => {
     body: JSON.stringify({ auto_reboot_enabled: els.autoToggle.checked }),
   });
   await loadAll();
+};
+
+function applyPoolsControl(enabled) {
+  state.poolsControl = Boolean(enabled);
+  const input = document.getElementById("poolsToggle");
+  if (input && document.activeElement !== input) input.checked = state.poolsControl;
+  const hint = document.getElementById("poolsControlHint");
+  if (hint) {
+    hint.textContent = state.poolsControl
+      ? "Ядро читает текущий пул с асиков и может записать новый."
+      : "Выключено: пулы на асиках не читаются и не меняются.";
+  }
+  ["applyPoolOne", "applyPoolFile", "loadPools"].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !state.poolsControl;
+  });
+}
+
+document.getElementById("poolsToggle").onchange = async () => {
+  const input = document.getElementById("poolsToggle");
+  try {
+    await api("/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ pools_control_enabled: input.checked }),
+    });
+    applyPoolsControl(input.checked);
+    if (openMinerId) fillMinerCard(openMinerId);
+    await loadAll();
+  } catch (error) {
+    input.checked = state.poolsControl;
+    const hint = document.getElementById("poolsControlHint");
+    if (hint) hint.textContent = error.message;
+  }
 };
 
 els.miners.addEventListener("click", async (event) => {

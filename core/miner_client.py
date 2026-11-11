@@ -286,11 +286,12 @@ class MinerClient:
         user: str,
         password: str,
         expected_ths: float,
+        include_pools: bool = True,
     ) -> MinerReading:
         try:
             if firmware == "vnish":
-                return await self._read_vnish(port, password, expected_ths)
-            return await self._read_antminer(port, user, password, expected_ths)
+                return await self._read_vnish(port, password, expected_ths, include_pools)
+            return await self._read_antminer(port, user, password, expected_ths, include_pools)
         except httpx.TimeoutException:
             return MinerReading(online=False, error="timeout")
         except httpx.HTTPError as exc:
@@ -321,6 +322,7 @@ class MinerClient:
         user: str,
         password: str,
         expected_ths: float,
+        include_pools: bool = True,
     ) -> MinerReading:
         auth = DigestAuth(user, password)
         async with httpx.AsyncClient(
@@ -340,21 +342,31 @@ class MinerClient:
                     last_error = f"invalid json on {path}"
                     continue
                 reading = parse_antminer(payload, expected_ths)
+                if not include_pools:
+                    reading.pools = []
                 if reading.hashrate_ths is not None or reading.online:
-                    await self._fill_antminer_extra(client, port, auth, reading)
+                    await self._fill_antminer_extra(client, port, auth, reading, include_pools)
                     return reading
             return MinerReading(online=False, error=last_error)
 
-    async def _fill_antminer_extra(self, client, port: int, auth, reading: MinerReading) -> None:
-        try:
-            response = await client.get(self._url(port, "/cgi-bin/pools.cgi"), auth=auth)
-            payload = _as_json(response) if response.status_code < 400 else None
-            if isinstance(payload, dict):
-                pools = _pools_from_items(payload.get("POOLS") or payload.get("pools"))
-                if pools:
-                    reading.pools = pools
-        except (httpx.HTTPError, ValueError):
-            pass
+    async def _fill_antminer_extra(
+        self,
+        client,
+        port: int,
+        auth,
+        reading: MinerReading,
+        include_pools: bool,
+    ) -> None:
+        if include_pools:
+            try:
+                response = await client.get(self._url(port, "/cgi-bin/pools.cgi"), auth=auth)
+                payload = _as_json(response) if response.status_code < 400 else None
+                if isinstance(payload, dict):
+                    pools = _pools_from_items(payload.get("POOLS") or payload.get("pools"))
+                    if pools:
+                        reading.pools = pools
+            except (httpx.HTTPError, ValueError):
+                pass
         if reading.temperatures or reading.fans:
             return
         try:
@@ -412,6 +424,7 @@ class MinerClient:
         port: int,
         password: str,
         expected_ths: float,
+        include_pools: bool = True,
     ) -> MinerReading:
         async with httpx.AsyncClient(
             timeout=self.timeout,
@@ -429,6 +442,9 @@ class MinerClient:
             if payload is None:
                 return MinerReading(online=False, error="invalid json")
             reading = parse_vnish(payload, expected_ths)
+            if not include_pools:
+                reading.pools = []
+                return reading
             if not reading.pools:
                 try:
                     settings = await self._vnish_call(client, port, token, "GET", "/api/v1/settings")

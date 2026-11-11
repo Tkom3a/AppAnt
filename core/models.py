@@ -104,6 +104,7 @@ class AppState(BaseModel):
     sleep_timezone: str = "Europe/Moscow"
     sleep_applied: dict[str, bool] = Field(default_factory=dict)
     pool_presets: list[PoolPreset] = Field(default_factory=list)
+    pools_control_enabled: bool = True
 
 
 class RebootRequest(BaseModel):
@@ -120,6 +121,7 @@ class SettingsPatch(BaseModel):
     sleep_enabled: Optional[bool] = None
     sleep_start: Optional[str] = None
     sleep_end: Optional[str] = None
+    pools_control_enabled: Optional[bool] = None
 
 
 class SleepCommand(BaseModel):

@@ -98,7 +98,7 @@ button, input { font: inherit; }
   z-index: 1;
   max-width: 1040px;
   margin: 0 auto;
-  padding: calc(18px + var(--safe)) 16px 48px;
+  padding: calc(12px + var(--safe)) 16px 12px;
 }
 
 .top {
@@ -106,8 +106,8 @@ button, input { font: inherit; }
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
-  padding: 8px 4px 14px;
+  margin-bottom: 8px;
+  padding: 4px 4px 8px;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -289,16 +289,16 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .icon-btn { padding: 10px 14px; flex: none; }
 .icon-btn svg { width: 16px; height: 16px; }
 .icon-btn.busy svg { animation: spin 0.7s linear infinite; }
-.ghost { width: 100%; margin-top: 16px; }
+.ghost { width: 100%; margin-top: 8px; padding: 8px 14px; }
 
 .stats {
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.stat { padding: 14px 16px 15px; }
+.stat { padding: 10px 14px 11px; }
 .stat span {
   color: var(--muted);
   font-size: 12px;
@@ -307,12 +307,12 @@ button:disabled { opacity: 0.55; cursor: progress; }
 }
 .stat strong {
   display: block;
-  margin-top: 6px;
-  font-size: 26px;
+  margin-top: 2px;
+  font-size: 22px;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
 }
-.stat-main strong { font-size: 30px; }
+.stat-main strong { font-size: 26px; }
 #autoState.on { color: var(--good); }
 #autoState.off { color: var(--muted); }
 
@@ -321,8 +321,8 @@ button:disabled { opacity: 0.55; cursor: progress; }
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 14px 16px;
-  margin: 0 0 14px;
+  padding: 10px 14px;
+  margin: 0 0 8px;
   color: var(--text);
   font-size: 15px;
   box-shadow: none;
@@ -387,7 +387,7 @@ button:disabled { opacity: 0.55; cursor: progress; }
   display: flex;
   gap: 4px;
   padding: 4px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -404,7 +404,7 @@ button:disabled { opacity: 0.55; cursor: progress; }
   background: transparent;
   color: var(--muted);
   border-radius: 12px;
-  padding: 11px 14px;
+  padding: 8px 12px;
   white-space: nowrap;
 }
 
@@ -426,13 +426,33 @@ button:disabled { opacity: 0.55; cursor: progress; }
 }
 .tab.active .tab-count { color: var(--text); }
 
+.list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
 .list article.miner { cursor: pointer; }
+.miner-copy { min-width: 0; }
 .pool-now {
-  margin-top: 6px;
+  margin-top: 2px;
   color: var(--text);
   font-size: 13px;
   letter-spacing: 0;
   text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.miner-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.miner-actions .reboot {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+  padding: 8px 8px;
 }
 
 .miner-detail {
@@ -488,12 +508,20 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .detail-events time { display: block; color: var(--muted); font-size: 12px; }
 
 .list article {
-  --st: var(--muted);
   padding: 16px;
+}
+.list article.miner {
+  --st: var(--muted);
+  padding: 10px 12px 8px;
   border-color: color-mix(in srgb, var(--st) 28%, var(--line));
   animation: rise 0.5s ease both;
   animation-delay: calc(var(--d, 0) * 45ms);
 }
+.list article.miner .name { font-size: 16px; }
+.list article.miner .hash-line { margin: 6px 0 4px; }
+.list article.miner .hash { font-size: 24px; }
+.list article.miner .meter-row { margin-bottom: 4px; }
+.list article.miner .meta { line-height: 1.25; }
 
 .list article:hover { transform: translateY(-2px); }
 .miner.healthy { --st: var(--good); }
@@ -722,6 +750,9 @@ button:disabled { opacity: 0.55; cursor: progress; }
 }
 
 .form-card h2 { margin: 0; font-size: 18px; }
+.pools-control { margin-bottom: 12px; }
+.pools-control .hint { margin-top: 8px; }
+.pools-control .switch-row { margin-bottom: 0; }
 .form-card .switch-row {
   margin: 0;
   padding: 0;

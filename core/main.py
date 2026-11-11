@@ -149,6 +149,8 @@ async def patch_settings(body: SettingsPatch):
         changes["sleep_start"] = _hhmm(body.sleep_start)
     if body.sleep_end is not None:
         changes["sleep_end"] = _hhmm(body.sleep_end)
+    if body.pools_control_enabled is not None:
+        changes["pools_control_enabled"] = body.pools_control_enabled
     if changes:
         store.update(**changes)
     return _settings_payload()
@@ -170,7 +172,13 @@ def _settings_payload() -> dict:
         "sleep_timezone": store.state.sleep_timezone,
         "sleep_applied": store.state.sleep_applied,
         "pool_presets": [item.model_dump() for item in store.state.pool_presets],
+        "pools_control_enabled": store.state.pools_control_enabled,
     }
+
+
+def _require_pools_control() -> None:
+    if not app.state.store.state.pools_control_enabled:
+        raise HTTPException(status_code=409, detail="Проверка и настройка пулов выключены")
 
 
 def _hhmm(value: str) -> str:
@@ -213,6 +221,7 @@ def _miner_or_404(miner_id: str):
 
 @app.get("/api/miners/{miner_id}/pools", dependencies=[Depends(require_token)])
 async def read_miner_pools(miner_id: str):
+    _require_pools_control()
     miner = _miner_or_404(miner_id)
     result = await get_monitor().read_pools(miner)
     if not result["ok"]:
@@ -222,6 +231,7 @@ async def read_miner_pools(miner_id: str):
 
 @app.post("/api/miners/{miner_id}/pools", dependencies=[Depends(require_token)])
 async def write_miner_pools(miner_id: str, body: PoolsCommand):
+    _require_pools_control()
     miner = _miner_or_404(miner_id)
     result = await get_monitor().write_pools(miner, _pool_slots(body.pools), body.keep_worker)
     if not result["ok"]:
@@ -245,6 +255,7 @@ async def pool_config():
 
 @app.post("/api/pools/apply-config", dependencies=[Depends(require_token)])
 async def apply_pool_config(body: PoolApplyBody):
+    _require_pools_control()
     try:
         result = await get_monitor().apply_pool_file(body.miner_ids)
     except KeyError:
@@ -256,6 +267,7 @@ async def apply_pool_config(body: PoolApplyBody):
 
 @app.post("/api/pools/apply", dependencies=[Depends(require_token)])
 async def apply_pools(body: PoolsCommand):
+    _require_pools_control()
     monitor = get_monitor()
     try:
         miners = monitor.miners_by_ids(body.miner_ids)
@@ -278,6 +290,7 @@ async def apply_pools(body: PoolsCommand):
 
 @app.post("/api/pools/broadcast", dependencies=[Depends(require_token)])
 async def broadcast_pools(body: PoolBroadcast):
+    _require_pools_control()
     slots = _pool_slots(body.pools)
     if not any(slot["url"] for slot in slots):
         raise HTTPException(status_code=400, detail="Укажите адрес хотя бы одного пула")
